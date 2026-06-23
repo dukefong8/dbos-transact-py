@@ -14,6 +14,8 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.exc import OperationalError
 
+from snoop import snoop_test
+
 # Public API
 from dbos import (
     DBOS,
@@ -41,6 +43,7 @@ from dbos._utils import GlobalParams
 from tests.conftest import retry_until_success, using_sqlite
 
 
+@snoop_test
 def test_simple_workflow(dbos: DBOS) -> None:
     txn_counter: int = 0
     wf_counter: int = 0
@@ -96,6 +99,7 @@ def test_simple_workflow(dbos: DBOS) -> None:
     assert wf_counter == 2
 
 
+@snoop_test
 def test_simple_workflow_attempts_counter(dbos: DBOS) -> None:
     @DBOS.workflow()
     def noop() -> None:
@@ -120,6 +124,7 @@ def test_simple_workflow_attempts_counter(dbos: DBOS) -> None:
             assert updated_at >= created_at
 
 
+@snoop_test
 def test_eid_reset(dbos: DBOS) -> None:
     @DBOS.step()
     def test_step() -> str:
@@ -154,6 +159,7 @@ def test_eid_reset(dbos: DBOS) -> None:
             assert x[0] == "local"
 
 
+@snoop_test(depth=8)
 def test_child_workflow(dbos: DBOS) -> None:
     @DBOS.workflow()
     def child_workflow(var: str) -> str:
@@ -191,6 +197,7 @@ def test_child_workflow(dbos: DBOS) -> None:
     assert async_child_status.parent_workflow_id == parent_id
 
 
+@snoop_test
 def test_child_workflow_assigned_id(dbos: DBOS) -> None:
     txn_counter: int = 0
 
@@ -229,6 +236,7 @@ def test_child_workflow_assigned_id(dbos: DBOS) -> None:
     assert child_status.parent_workflow_id == original_parent_id
 
 
+@snoop_test
 def test_exception_workflow(dbos: DBOS) -> None:
     txn_counter: int = 0
     wf_counter: int = 0
@@ -306,6 +314,7 @@ def test_exception_workflow(dbos: DBOS) -> None:
     assert wf_counter == 2  # The workflow error is directly returned without running
 
 
+@snoop_test
 def test_temp_workflow(dbos: DBOS) -> None:
     txn_counter: int = 0
     step_counter: int = 0
@@ -349,6 +358,7 @@ def test_temp_workflow(dbos: DBOS) -> None:
     assert step_counter == 2
 
 
+@snoop_test
 def test_temp_workflow_errors(dbos: DBOS) -> None:
     txn_counter: int = 0
     step_counter: int = 0
@@ -388,6 +398,7 @@ def test_temp_workflow_errors(dbos: DBOS) -> None:
     assert retried_step_counter == 1
 
 
+@snoop_test
 def test_recovery_workflow(dbos: DBOS) -> None:
     txn_counter: int = 0
     txn_return_none_counter: int = 0
@@ -442,6 +453,7 @@ def test_recovery_workflow(dbos: DBOS) -> None:
     assert stat.recovery_attempts == 2  # original attempt + recovery attempt
 
 
+@snoop_test
 def test_recovery_workflow_step(dbos: DBOS) -> None:
     step_counter: int = 0
     wf_counter: int = 0
@@ -486,6 +498,7 @@ def test_recovery_workflow_step(dbos: DBOS) -> None:
     assert stat.recovery_attempts == 2
 
 
+@snoop_test
 def test_workflow_returns_none(dbos: DBOS) -> None:
     wf_counter: int = 0
 
@@ -530,6 +543,7 @@ def test_workflow_returns_none(dbos: DBOS) -> None:
     )  # 1 actual call to test_workflow + 1 recovery attempt
 
 
+@snoop_test
 def test_recovery_temp_workflow(dbos: DBOS) -> None:
     txn_counter: int = 0
 
@@ -578,6 +592,7 @@ def test_recovery_temp_workflow(dbos: DBOS) -> None:
     assert txn_counter == 1
 
 
+@snoop_test
 def test_recovery_thread(config: DBOSConfig) -> None:
     wf_counter: int = 0
     test_var = "dbos"
@@ -625,6 +640,7 @@ def test_recovery_thread(config: DBOSConfig) -> None:
     assert success
 
 
+@snoop_test
 def test_start_workflow(dbos: DBOS) -> None:
     txn_counter: int = 0
     wf_counter: int = 0
@@ -662,6 +678,7 @@ def test_start_workflow(dbos: DBOS) -> None:
     assert wf_counter == 1
 
 
+@snoop_test
 def test_retrieve_workflow(dbos: DBOS) -> None:
     @DBOS.workflow()
     def test_sleep_workflow(secs: float) -> str:
@@ -745,6 +762,7 @@ def test_retrieve_workflow(dbos: DBOS) -> None:
     assert retrieved_handle.get_status().error is None
 
 
+@snoop_test
 def test_retrieve_workflow_in_workflow(dbos: DBOS) -> None:
     @DBOS.workflow()
     def test_sleep_workflow(secs: float) -> str:
@@ -808,6 +826,7 @@ def test_retrieve_workflow_in_workflow(dbos: DBOS) -> None:
     )  # because we now return based on parent child reln
 
 
+@snoop_test
 def test_sleep(dbos: DBOS) -> None:
     @DBOS.workflow()
     def test_sleep_workflow(secs: float) -> str:
@@ -827,6 +846,7 @@ def test_sleep(dbos: DBOS) -> None:
         assert time.time() - start_time < 0.3
 
 
+@snoop_test
 def test_send_recv(dbos: DBOS, config: DBOSConfig) -> None:
     for use_listen_notify in [True, False]:
         # Test using both LISTEN/NOTIFY and polling
@@ -938,6 +958,7 @@ def test_send_recv(dbos: DBOS, config: DBOSConfig) -> None:
         assert "recv() must be called from within a workflow" in str(exc_info.value)
 
 
+@snoop_test
 def test_send_recv_temp_wf(dbos: DBOS) -> None:
     recv_counter: int = 0
 
@@ -991,6 +1012,7 @@ def test_send_recv_temp_wf(dbos: DBOS) -> None:
     assert len(x) == 0
 
 
+@snoop_test
 def test_send_idempotency_key(dbos: DBOS) -> None:
     recv_two_messages_event = threading.Event()
 
@@ -1110,6 +1132,7 @@ def test_send_idempotency_key(dbos: DBOS) -> None:
     assert handle4.get_result() == "hello_step-None"
 
 
+@snoop_test
 def test_send_bulk(dbos: DBOS) -> None:
     @DBOS.workflow()
     def recv_three() -> str:
@@ -1173,6 +1196,7 @@ def test_send_bulk(dbos: DBOS) -> None:
     assert handle_real.get_result() == "None"
 
 
+@snoop_test
 def test_send_bulk_from_workflow(dbos: DBOS) -> None:
     send_counter = 0
 
@@ -1210,6 +1234,7 @@ def test_send_bulk_from_workflow(dbos: DBOS) -> None:
     assert send_counter == 1
 
 
+@snoop_test
 def test_send_bulk_idempotency_key(dbos: DBOS) -> None:
     recv_event = threading.Event()
 
@@ -1232,6 +1257,7 @@ def test_send_bulk_idempotency_key(dbos: DBOS) -> None:
     assert handle.get_result() == "hello-None"
 
 
+@snoop_test
 def test_send_bulk_duplicate_key_within_batch(dbos: DBOS) -> None:
     """Two messages sharing an idempotency key in a single bulk call is rejected
     before the transaction starts, so nothing is delivered."""
@@ -1258,6 +1284,7 @@ def test_send_bulk_duplicate_key_within_batch(dbos: DBOS) -> None:
     assert handle.get_result() == "None"
 
 
+@snoop_test
 def test_send_bulk_empty(dbos: DBOS) -> None:
     """An empty bulk send is a no-op and must not raise, in or out of a workflow."""
     DBOS.send_bulk([])
@@ -1280,6 +1307,7 @@ def _notification_destinations(dbos: DBOS, message_uuids: bool = False) -> Set[s
         return {r[0] for r in c.execute(sa.select(col)).all()}
 
 
+@snoop_test
 def test_send_bulk_send_to_forks(dbos: DBOS) -> None:
     """send_to_forks fans each message out to its destination plus every workflow
     recursively forked from it. A single bulk send resolves all destinations at
@@ -1345,6 +1373,7 @@ def test_send_bulk_send_to_forks(dbos: DBOS) -> None:
     assert d in dests and d_fork not in dests
 
 
+@snoop_test
 def test_set_get_events(
     dbos: DBOS, config: DBOSConfig, skip_with_sqlite_imprecise_time: None
 ) -> None:
@@ -1470,6 +1499,7 @@ def test_set_get_events(
         assert time.time() - start_time < 5
 
 
+@snoop_test
 def test_nonserializable_values(dbos: DBOS) -> None:
     def invalid_return() -> str:
         return "literal"
@@ -1544,6 +1574,7 @@ def test_nonserializable_values(dbos: DBOS) -> None:
         test_bad_wf4("d")
 
 
+@snoop_test
 def test_multi_set_event(dbos: DBOS) -> None:
     event = threading.Event()
 
@@ -1578,6 +1609,7 @@ def test_multi_set_event(dbos: DBOS) -> None:
     assert DBOS.get_all_events(wfid) == {workflow_key: value2, step_key: value2}
 
 
+@snoop_test
 def test_debug_logging(
     dbos: DBOS, caplog: pytest.LogCaptureFixture, config: DBOSConfig
 ) -> None:
@@ -1655,6 +1687,7 @@ def test_debug_logging(
     logging.getLogger("dbos").propagate = original_propagate
 
 
+@snoop_test
 def test_destroy_semantics(dbos: DBOS, config: DBOSConfig) -> None:
 
     @DBOS.workflow()
@@ -1679,6 +1712,7 @@ def test_destroy_semantics(dbos: DBOS, config: DBOSConfig) -> None:
 
 
 @pytest.mark.asyncio
+@snoop_test
 async def test_destroy_semantics_async(dbos: DBOS, config: DBOSConfig) -> None:
 
     @DBOS.workflow()
@@ -1702,6 +1736,7 @@ async def test_destroy_semantics_async(dbos: DBOS, config: DBOSConfig) -> None:
     assert await wf.get_result() == var
 
 
+@snoop_test
 def test_double_decoration(dbos: DBOS) -> None:
     with pytest.raises(
         DBOSConflictingRegistrationError,
@@ -1716,6 +1751,7 @@ def test_double_decoration(dbos: DBOS) -> None:
         my_function()
 
 
+@snoop_test
 def test_duplicate_registration(
     dbos: DBOS, caplog: pytest.LogCaptureFixture, config: DBOSConfig
 ) -> None:
@@ -1772,6 +1808,7 @@ def test_duplicate_registration(
     logging.getLogger("dbos").propagate = original_propagate
 
 
+@snoop_test
 def test_app_version(
     config: DBOSConfig,
     cleanup_test_databases: None,
@@ -1960,6 +1997,7 @@ def test_app_version(
     DBOS.destroy(destroy_registry=True)
 
 
+@snoop_test
 def test_recovery_appversion(config: DBOSConfig) -> None:
     input = 5
     os.environ["DBOS__VMID"] = "testexecutor"
@@ -2027,6 +2065,7 @@ def test_recovery_appversion(config: DBOSConfig) -> None:
     del os.environ["DBOS__VMID"]
 
 
+@snoop_test
 def test_workflow_timeout(dbos: DBOS) -> None:
 
     @DBOS.workflow()
@@ -2123,6 +2162,7 @@ def test_workflow_timeout(dbos: DBOS) -> None:
     retry_until_success(assert_timeout_tasks_empty, interval=0.1, max_attempts=50)
 
 
+@snoop_test
 def test_timeout_cleanup_on_destroy(dbos: DBOS, config: DBOSConfig) -> None:
     @DBOS.workflow()
     def slow_workflow() -> None:
@@ -2150,6 +2190,7 @@ def test_timeout_cleanup_on_destroy(dbos: DBOS, config: DBOSConfig) -> None:
     DBOS.launch()
 
 
+@snoop_test
 def test_custom_names(dbos: DBOS) -> None:
     workflow_name = "workflow_name"
     step_name = "step_name"
@@ -2203,6 +2244,7 @@ def test_custom_names(dbos: DBOS) -> None:
 
 
 @pytest.mark.asyncio
+@snoop_test
 async def test_step_without_dbos(dbos: DBOS, config: DBOSConfig) -> None:
     DBOS.destroy(destroy_registry=True)
 
@@ -2232,6 +2274,7 @@ async def test_step_without_dbos(dbos: DBOS, config: DBOSConfig) -> None:
     assert len(await DBOS.list_workflows_async()) == 0
 
 
+@snoop_test
 def test_nested_steps(dbos: DBOS) -> None:
 
     @DBOS.step()
@@ -2254,6 +2297,7 @@ def test_nested_steps(dbos: DBOS) -> None:
     assert steps[0]["function_name"] == outer_step.__qualname__
 
 
+@snoop_test
 def test_destroy(dbos: DBOS, config: DBOSConfig) -> None:
 
     @DBOS.workflow()
@@ -2287,6 +2331,7 @@ def test_destroy(dbos: DBOS, config: DBOSConfig) -> None:
         handle.get_result()
 
 
+@snoop_test
 def test_without_appdb(config: DBOSConfig, cleanup_test_databases: None) -> None:
     DBOS.destroy(destroy_registry=True)
     config["application_database_url"] = None
@@ -2331,6 +2376,7 @@ def test_without_appdb(config: DBOSConfig, cleanup_test_databases: None) -> None
         assert s["function_name"] == step.__qualname__
 
 
+@snoop_test
 def test_custom_database(
     config: DBOSConfig, db_engine: sa.Engine, cleanup_test_databases: None
 ) -> None:
@@ -2395,6 +2441,7 @@ def test_custom_database(
     assert "transaction" in steps[0]["function_name"]
 
 
+@snoop_test
 def test_custom_schema(
     config: DBOSConfig, cleanup_test_databases: None, skip_with_sqlite: None
 ) -> None:
@@ -2452,6 +2499,7 @@ def test_custom_schema(
     assert "transaction" in steps[0]["function_name"]
 
 
+@snoop_test
 def test_custom_engine(
     config: DBOSConfig,
     cleanup_test_databases: None,
@@ -2535,6 +2583,7 @@ def test_custom_engine(
     assert "setEvent" in steps[0]["function_name"]
 
 
+@snoop_test
 def test_get_events(dbos: DBOS) -> None:
 
     @DBOS.workflow()
@@ -2585,6 +2634,7 @@ def test_get_events(dbos: DBOS) -> None:
     assert events2 == {}
 
 
+@snoop_test
 def test_run_step(dbos: DBOS) -> None:
     @DBOS.workflow()
     def test_workflow(var: str, var2: str) -> str:
@@ -2721,6 +2771,7 @@ def test_run_step(dbos: DBOS) -> None:
 
 
 @pytest.mark.asyncio
+@snoop_test
 async def test_run_step_async(dbos: DBOS) -> None:
     @DBOS.workflow()
     async def test_workflow_acs(var: str, var2: str) -> str:
@@ -2849,6 +2900,7 @@ async def test_run_step_async(dbos: DBOS) -> None:
     await test_errors_wf_async()
 
 
+@snoop_test
 def test_wait_first(dbos: DBOS, client: DBOSClient) -> None:
     @DBOS.workflow()
     def fast_workflow() -> str:
@@ -2879,12 +2931,14 @@ def test_wait_first(dbos: DBOS, client: DBOSClient) -> None:
     handle_slow.get_result()
 
 
+@snoop_test
 def test_wait_first_empty(dbos: DBOS) -> None:
     with pytest.raises(ValueError, match="must not be empty"):
         DBOS.wait_first([])
 
 
 @pytest.mark.asyncio
+@snoop_test
 async def test_wait_first_async(dbos: DBOS, client: DBOSClient) -> None:
     @DBOS.workflow()
     async def fast_async_wf() -> str:
@@ -2946,6 +3000,7 @@ async def test_wait_first_async(dbos: DBOS, client: DBOSClient) -> None:
     assert steps[4]["function_name"] == "DBOS.getResult"
 
 
+@snoop_test
 def test_get_event_timeout(dbos: DBOS) -> None:
     @DBOS.workflow()
     def workflow() -> Any:
@@ -2959,6 +3014,7 @@ def test_get_event_timeout(dbos: DBOS) -> None:
     assert forked_handle.get_result() is None
 
 
+@snoop_test
 def test_recv_timeout(dbos: DBOS) -> None:
     @DBOS.workflow()
     def workflow() -> Any:
@@ -2970,6 +3026,7 @@ def test_recv_timeout(dbos: DBOS) -> None:
     assert forked_handle.get_result() is None
 
 
+@snoop_test
 def test_notification_fallback_polling(dbos: DBOS) -> None:
     """Test that recv and get_event still work when the notification listener thread is dead."""
     sys_db = dbos._sys_db
@@ -3024,6 +3081,7 @@ def test_notification_fallback_polling(dbos: DBOS) -> None:
 
 
 @pytest.mark.asyncio
+@snoop_test
 async def test_workflow_wrapped_by_custom_decorator(
     dbos: DBOS, client: DBOSClient
 ) -> None:

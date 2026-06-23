@@ -2,8 +2,7 @@ import inspect
 import os
 from collections.abc import Callable
 from contextlib import ContextDecorator
-from functools import wraps
-from typing import Any, TypeVar
+from typing import TypeVar
 
 F = TypeVar("F", bound=Callable[..., object])
 
@@ -20,16 +19,18 @@ class _NullSnoop(ContextDecorator):
 
 
 class _Snoop(ContextDecorator):
-    def __init__(self, label: str, depth: int):
+    def __init__(self, label: str | None, depth: int, log_file: str | None = None):
         self.label = label
         self.depth = depth
+        self.log_file = log_file
         self._tracer: ContextDecorator | None = None
 
     def _new_tracer(self) -> ContextDecorator:
         import pysnooper
 
         return pysnooper.snoop(
-            prefix=f"{self.label} ",
+            output=self.log_file,
+            prefix=f"{self.label} " if self.label else "",
             depth=self.depth,
             thread_info=False,
             color=False,
@@ -46,13 +47,12 @@ class _Snoop(ContextDecorator):
 
     def __call__(self, func: F) -> F:
         if inspect.iscoroutinefunction(func):
-
-            @wraps(func)
-            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                with self._new_tracer():
-                    return await func(*args, **kwargs)
-
-            return async_wrapper  # type: ignore[return-value]
+            # pysnooper's tracer is sync-only; async functions emit coroutine
+            # suspension "return" events and the tracer drops its frame state
+            # before the coroutine actually finishes. That raises KeyError on
+            # __exit__ when the wrapper unwinds after an await. Leave async
+            # callables untouched so they stay runnable.
+            return func
 
         return self._new_tracer()(func)  # type: ignore[return-value]
 
@@ -64,10 +64,36 @@ def _get_snoop_depth() -> int:
         return 0
 
 
-def snoop(label: str, depth: int | None = None) -> ContextDecorator:
+def snoop(
+    _func: F | str | None = None,
+    *,
+    label: str | None = None,
+    depth: int | None = None,
+    log_file: str | None = None,
+) -> ContextDecorator | F:
     if depth is None:
         depth = _get_snoop_depth()
     if depth <= 0:
-        return _NullSnoop()
+        tracer: ContextDecorator = _NullSnoop()
+    else:
+        if log_file is not None:
+            log_dir = os.path.dirname(log_file)
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+        tracer = _Snoop(label, depth, log_file=log_file)
 
-    return _Snoop(label, depth)
+    if _func is None:
+        return tracer
+    return tracer(_func)
+
+
+def snoop_test(_func: F | None = None, *, depth: int | None = None):
+    def decorator(func: F) -> F:
+        return snoop(
+            depth=depth,
+            log_file=f"logs/{func.__name__}.log",
+        )(func)
+
+    if _func is None:
+        return decorator
+    return decorator(_func)

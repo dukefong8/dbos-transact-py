@@ -15,6 +15,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import Session
 
+from snoop import snoop_test
+
 from dbos import (
     DBOS,
     DBOSClient,
@@ -62,6 +64,7 @@ def _count_notifications(client: DBOSClient, workflow_id: str) -> int:
         return len(rows)
 
 
+@snoop_test
 def test_client_no_migrate(
     dbos: DBOS, config: DBOSConfig, skip_with_sqlite: None
 ) -> None:
@@ -78,6 +81,7 @@ def test_client_no_migrate(
     assert f'database "dbostestpy_dbos_sys" does not exist' in str(exc_info.value)
 
 
+@snoop_test
 def test_client_enqueue_and_get_result(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -110,6 +114,7 @@ def test_client_enqueue_and_get_result(dbos: DBOS, client: DBOSClient) -> None:
     assert list_results[0].input is None
 
 
+@snoop_test
 def test_enqueue_with_timeout(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -133,6 +138,7 @@ def test_enqueue_with_timeout(dbos: DBOS, client: DBOSClient) -> None:
     assert "was cancelled" in str(exc_info.value)
 
 
+@snoop_test
 def test_client_enqueue_appver_not_set(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -158,6 +164,7 @@ def test_client_enqueue_appver_not_set(dbos: DBOS, client: DBOSClient) -> None:
     assert wf_status.app_version == DBOS.application_version
 
 
+@snoop_test
 def test_client_enqueue_appver_set(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -184,6 +191,7 @@ def test_client_enqueue_appver_set(dbos: DBOS, client: DBOSClient) -> None:
     assert wf_status.app_version == DBOS.application_version
 
 
+@snoop_test
 def test_client_enqueue_wrong_appver(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -208,6 +216,7 @@ def test_client_enqueue_wrong_appver(dbos: DBOS, client: DBOSClient) -> None:
     assert wf_status.app_version == options["app_version"]
 
 
+@snoop_test
 def test_client_enqueue_idempotent(config: DBOSConfig, client: DBOSClient) -> None:
     DBOS.destroy(destroy_registry=True)
 
@@ -240,6 +249,7 @@ def test_client_enqueue_idempotent(config: DBOSConfig, client: DBOSClient) -> No
     DBOS.destroy(destroy_registry=True)
 
 
+@snoop_test
 def test_client_send_with_topic(client: DBOSClient, dbos: DBOS) -> None:
 
     from tests.client_collateral import send_test
@@ -260,6 +270,7 @@ def test_client_send_with_topic(client: DBOSClient, dbos: DBOS) -> None:
     assert result == message
 
 
+@snoop_test
 def test_client_send_no_topic(client: DBOSClient, dbos: DBOS) -> None:
 
     run_client_collateral()
@@ -277,6 +288,7 @@ def test_client_send_no_topic(client: DBOSClient, dbos: DBOS) -> None:
     assert result == message
 
 
+@snoop_test
 def test_client_send_bulk(client: DBOSClient, dbos: DBOS) -> None:
 
     from tests.client_collateral import send_test
@@ -317,6 +329,7 @@ def run_send_worker(wfid: str, topic: Optional[str], app_ver: str) -> None:
     DBOS.logger.info(result.stdout)
 
 
+@snoop_test
 def test_client_send_idempotent(
     dbos: DBOS, client: DBOSClient, skip_with_sqlite: None
 ) -> None:
@@ -352,6 +365,7 @@ def reexecute_workflow_by_id(dbos: DBOS, wfid: str) -> "WorkflowHandle[Any]":
     return dbos._execute_workflow_id(wfid)
 
 
+@snoop_test
 def test_client_get_event(client: DBOSClient, dbos: DBOS) -> None:
     run_client_collateral()
 
@@ -369,6 +383,7 @@ def test_client_get_event(client: DBOSClient, dbos: DBOS) -> None:
     assert result == f"{key}-{value}"
 
 
+@snoop_test
 def test_client_get_event_prompt_delivery(client: DBOSClient, dbos: DBOS) -> None:
     """The client runs no notification listener, so get_event must poll the
     database while waiting: a value set mid-wait should be delivered promptly,
@@ -396,6 +411,7 @@ def test_client_get_event_prompt_delivery(client: DBOSClient, dbos: DBOS) -> Non
     assert elapsed < 30, f"client.get_event took {elapsed:.1f}s"
 
 
+@snoop_test
 def test_client_get_event_finished(client: DBOSClient, dbos: DBOS) -> None:
     run_client_collateral()
 
@@ -413,6 +429,7 @@ def test_client_get_event_finished(client: DBOSClient, dbos: DBOS) -> None:
     assert client_value == value
 
 
+@snoop_test
 def test_client_get_event_update(client: DBOSClient, dbos: DBOS) -> None:
     run_client_collateral()
 
@@ -440,6 +457,7 @@ def test_client_get_event_update(client: DBOSClient, dbos: DBOS) -> None:
     assert client_value == f"updated-{value}"
 
 
+@snoop_test
 def test_client_get_event_update_finished(client: DBOSClient, dbos: DBOS) -> None:
     run_client_collateral()
 
@@ -457,6 +475,7 @@ def test_client_get_event_update_finished(client: DBOSClient, dbos: DBOS) -> Non
     assert client_value == f"updated-{value}"
 
 
+@snoop_test
 def test_client_retrieve_wf(client: DBOSClient, dbos: DBOS) -> None:
     run_client_collateral()
 
@@ -472,6 +491,7 @@ def test_client_retrieve_wf(client: DBOSClient, dbos: DBOS) -> None:
     assert result == message
 
 
+@snoop_test
 def test_client_retrieve_wf_done(client: DBOSClient, dbos: DBOS) -> None:
     run_client_collateral()
 
@@ -486,6 +506,7 @@ def test_client_retrieve_wf_done(client: DBOSClient, dbos: DBOS) -> None:
     assert result2 == message
 
 
+@snoop_test
 def test_client_fork(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -515,6 +536,7 @@ def test_client_fork(dbos: DBOS, client: DBOSClient) -> None:
     assert len(client.list_workflows()) == 3
 
 
+@snoop_test
 @pytest.mark.asyncio
 async def test_client_fork_async(dbos: DBOS, client: DBOSClient) -> None:
     await asyncio.to_thread(run_client_collateral)
@@ -542,6 +564,7 @@ async def test_client_fork_async(dbos: DBOS, client: DBOSClient) -> None:
     assert len(await client.list_workflows_async()) == 3
 
 
+@snoop_test
 def test_enqueue_with_deduplication(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -587,6 +610,7 @@ def test_enqueue_with_deduplication(dbos: DBOS, client: DBOSClient) -> None:
     assert handle2.get_result() == "abc"
 
 
+@snoop_test
 def test_enqueue_in_transaction_commit(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -619,6 +643,7 @@ def test_enqueue_in_transaction_commit(dbos: DBOS, client: DBOSClient) -> None:
     assert list_results[0].status == "SUCCESS"
 
 
+@snoop_test
 def test_enqueue_in_transaction_rollback(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -639,6 +664,7 @@ def test_enqueue_in_transaction_rollback(dbos: DBOS, client: DBOSClient) -> None
         client.retrieve_workflow(wfid)
 
 
+@snoop_test
 def test_enqueue_in_transaction_pre_commit_invisible(
     dbos: DBOS, client: DBOSClient
 ) -> None:
@@ -664,6 +690,7 @@ def test_enqueue_in_transaction_pre_commit_invisible(
                 assert row is None
 
 
+@snoop_test
 def test_enqueue_in_transaction_deduplication(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -703,6 +730,7 @@ def test_enqueue_in_transaction_deduplication(dbos: DBOS, client: DBOSClient) ->
     assert handle2.get_result() == "abc"
 
 
+@snoop_test
 def test_enqueue_in_transaction_session(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -732,6 +760,7 @@ def test_enqueue_in_transaction_session(dbos: DBOS, client: DBOSClient) -> None:
     assert not _workflow_exists(client, wfid2)
 
 
+@snoop_test
 def test_enqueue_in_transaction_session_after_statement(
     dbos: DBOS, client: DBOSClient
 ) -> None:
@@ -762,6 +791,7 @@ def test_enqueue_in_transaction_session_after_statement(
     assert handle.get_result() == "after-statement"
 
 
+@snoop_test
 @pytest.mark.asyncio
 async def test_enqueue_in_transaction_run_sync(
     dbos: DBOS, client: DBOSClient, skip_with_sqlite: None
@@ -801,6 +831,7 @@ async def test_enqueue_in_transaction_run_sync(
     assert list_results[0].status == "SUCCESS"
 
 
+@snoop_test
 def test_send_in_transaction_commit(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -825,6 +856,7 @@ def test_send_in_transaction_commit(dbos: DBOS, client: DBOSClient) -> None:
     assert handle.get_result() == message
 
 
+@snoop_test
 def test_send_in_transaction_session_after_statement(
     dbos: DBOS, client: DBOSClient
 ) -> None:
@@ -854,6 +886,7 @@ def test_send_in_transaction_session_after_statement(
     assert handle.get_result() == message
 
 
+@snoop_test
 def test_send_in_transaction_rollback(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -876,6 +909,7 @@ def test_send_in_transaction_rollback(dbos: DBOS, client: DBOSClient) -> None:
     assert handle.get_result() == f"delivered {now}"
 
 
+@snoop_test
 def test_send_in_transaction_pre_commit_invisible(
     dbos: DBOS, client: DBOSClient
 ) -> None:
@@ -904,6 +938,7 @@ def test_send_in_transaction_pre_commit_invisible(
     assert handle.get_result() == message
 
 
+@snoop_test
 def test_send_in_transaction_idempotent(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -933,6 +968,7 @@ def test_send_in_transaction_idempotent(dbos: DBOS, client: DBOSClient) -> None:
     assert handle.get_result() == message
 
 
+@snoop_test
 def test_send_in_transaction_session(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -965,6 +1001,7 @@ def test_send_in_transaction_session(dbos: DBOS, client: DBOSClient) -> None:
     assert handle2.get_result() == f"delivered {now}"
 
 
+@snoop_test
 def test_send_bulk_in_transaction(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
@@ -1006,6 +1043,7 @@ def test_send_bulk_in_transaction(dbos: DBOS, client: DBOSClient) -> None:
     assert handle_b.get_result() == f"to_b {now}"
 
 
+@snoop_test
 def test_enqueue_and_send_in_transaction(dbos: DBOS, client: DBOSClient) -> None:
     # Atomically enqueue a workflow and send it a message in one transaction.
     # The workflow row inserted by the enqueue satisfies the foreign key
@@ -1032,6 +1070,7 @@ def test_enqueue_and_send_in_transaction(dbos: DBOS, client: DBOSClient) -> None
     assert handle.get_result() == message
 
 
+@snoop_test
 @pytest.mark.asyncio
 async def test_send_in_transaction_run_sync(
     dbos: DBOS, client: DBOSClient, skip_with_sqlite: None
@@ -1068,6 +1107,7 @@ async def test_send_in_transaction_run_sync(
     assert result == message
 
 
+@snoop_test
 def test_enqueue_with_priority(dbos: DBOS, client: DBOSClient) -> None:
     importlib.reload(client_collateral)
     from tests.client_collateral import inorder_results
@@ -1102,11 +1142,13 @@ def test_enqueue_with_priority(dbos: DBOS, client: DBOSClient) -> None:
     assert inorder_results == ["abc", "ghi", "def"]
 
 
+@snoop_test
 def test_client_bad_url() -> None:
     with pytest.raises(DBAPIError) as exc_info:
         DBOSClient("postgresql://postgres:fakepassword@localhost:5433/fake_database")
 
 
+@snoop_test
 def test_client_auth(dbos: DBOS, client: DBOSClient) -> None:
     run_client_collateral()
 
