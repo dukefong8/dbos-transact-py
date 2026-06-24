@@ -113,5 +113,5 @@ dev = [
     "basilisp>=0.5.1",
     "basilisp-kernel>=1.3.0",
     "jupyter-console>=1.1.1",
-    "pysnooper>=1.2.0"
+    "pysnooper>=1.2.3",
 ]

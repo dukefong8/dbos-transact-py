@@ -362,12 +362,25 @@ def _init_workflow(
     is_recovery_request: Optional[bool],
     is_dequeued_request: Optional[bool],
     serialization_type: Optional[WorkflowSerializationFormat],
+    child_workflow_id: Optional[str] = None,
 ) -> tuple[WorkflowStatusInternal, bool]:
+    # If launching child, capture ID before to_thread dispatch, so a concurrent end_workflow() on shutdown can't blank the id read here.
     wfid = (
-        ctx.workflow_id
-        if len(ctx.workflow_id) > 0
-        else ctx.id_assigned_for_next_workflow
+        child_workflow_id
+        if child_workflow_id
+        else (
+            ctx.workflow_id
+            if len(ctx.workflow_id) > 0
+            else ctx.id_assigned_for_next_workflow
+        )
     )
+    if not wfid:
+        # An empty id is never valid; fail loudly instead of persisting a row that wedges recovery.
+        raise DBOSException(
+            "Attempted to initialize a workflow with an empty workflow ID. "
+            "The workflow context was likely cleared concurrently (e.g. by "
+            "shutdown) while the workflow was being recorded."
+        )
 
     # If we have a class name, the first arg is the instance and do not serialize
     if class_name is not None and class_name != "":
@@ -606,7 +619,8 @@ class ActiveWorkflowById:
             del self._m[key]
 
     def activeList(self) -> List[str]:
-        return list(self._m.keys())
+        with self._lock:
+            return list(self._m.keys())
 
     def count_for_queue(
         self, queue_name: str, queue_partition_key: Optional[str] = None
@@ -936,6 +950,7 @@ def start_workflow(
         is_recovery_request=is_recovery,
         is_dequeued_request=is_dequeued,
         serialization_type=serialization_type,
+        child_workflow_id=new_child_workflow_id,
     )
 
     if status["serialization"] == DBOSPortableJSON.name():
@@ -1058,6 +1073,7 @@ async def start_workflow_async(
         is_recovery_request=is_recovery_request,
         is_dequeued_request=is_dequeued_request,
         serialization_type=serialization_type,
+        child_workflow_id=new_child_workflow_id,
     )
 
     if status["serialization"] == DBOSPortableJSON.name():
@@ -1154,6 +1170,10 @@ def workflow_wrapper(
         }
         cctx = get_local_dbos_context()
         newwfctx = DBOSContext.create_start_workflow_child(cctx)
+        # Freeze the child id before to_thread dispatch: a concurrent end_workflow() on shutdown could blank newwfctx.workflow_id mid-registration.
+        child_wfid = newwfctx.id_assigned_for_next_workflow
+        parent_wfid = newwfctx.parent_workflow_id
+        parent_fid = newwfctx.parent_workflow_fid
         resctx: Optional[DBOSContext] = None
         if cctx is not None and cctx.is_workflow():
             resctx = cctx.snapshot_step_ctx(reserve_sleep_id=False)
@@ -1179,12 +1199,12 @@ def workflow_wrapper(
                 return recorded_result_inner
 
             nonlocal workflow_id
-            workflow_id = newwfctx.workflow_id
+            workflow_id = child_wfid
 
-            if newwfctx.has_parent():
+            if parent_wfid:
                 r = dbos._sys_db.check_operation_execution(
-                    newwfctx.parent_workflow_id,
-                    newwfctx.parent_workflow_fid,
+                    parent_wfid,
+                    parent_fid,
                     get_dbos_func_name(func),
                 )
                 if r and r["error"]:
@@ -1210,6 +1230,7 @@ def workflow_wrapper(
                 is_recovery_request=False,
                 is_dequeued_request=False,
                 serialization_type=fi.serialization_type,
+                child_workflow_id=child_wfid,
             )
 
             def get_recorded_result(_func: Callable[[], R]) -> R:
@@ -1223,14 +1244,14 @@ def workflow_wrapper(
 
             # TODO: maybe modify the parameters if they've been changed by `_init_workflow`
             dbos.logger.debug(
-                f"Running workflow, id: {newwfctx.workflow_id}, name: {get_dbos_func_name(func)}"
+                f"Running workflow, id: {child_wfid}, name: {get_dbos_func_name(func)}"
             )
 
-            if newwfctx.has_parent():
+            if parent_wfid:
                 dbos._sys_db.record_child_workflow(
-                    newwfctx.parent_workflow_id,
-                    newwfctx.workflow_id,
-                    newwfctx.parent_workflow_fid,
+                    parent_wfid,
+                    child_wfid,
+                    parent_fid,
                     get_dbos_func_name(func),
                 )
 
@@ -1844,24 +1865,29 @@ async def run_step_async(
     # Otherwise, run it as a normal function.
     options = normalize_step_options(options)
     if step_ctx and step_ctx.is_workflow():
-        outcome = invoke_step(
-            dbos,
-            step_ctx,
-            func,
-            args,
-            kwargs,
-            step_name=options["name"] if options["name"] else func.__qualname__,
-            retries_allowed=options["retries_allowed"],
-            interval_seconds=options["interval_seconds"],
-            max_attempts=options["max_attempts"],
-            backoff_rate=options["backoff_rate"],
-            should_retry=options["should_retry"],
-            preemptible=options["preemptible"],
-        )
+
+        def invoke() -> Union[R, Coroutine[Any, Any, R]]:
+            return invoke_step(
+                dbos,
+                step_ctx,
+                func,
+                args,
+                kwargs,
+                step_name=options["name"] if options["name"] else func.__qualname__,
+                retries_allowed=options["retries_allowed"],
+                interval_seconds=options["interval_seconds"],
+                max_attempts=options["max_attempts"],
+                backoff_rate=options["backoff_rate"],
+                should_retry=options["should_retry"],
+                preemptible=options["preemptible"],
+            )
+
         if inspect.iscoroutinefunction(func):
-            return await cast(Coroutine[Any, Any, R], outcome)
+            # Async step: build the Pending outcome on the loop and await it.
+            return await cast(Coroutine[Any, Any, R], invoke())
         else:
-            return cast(R, outcome)
+            # Sync step: run it off-loop so its DB checkpoints, body, and retry sleep don't block the loop.
+            return await asyncio.to_thread(lambda: cast(R, invoke()))
     else:
         if inspect.iscoroutinefunction(func):
             return await cast(Callable[P, Coroutine[Any, Any, R]], func)(
